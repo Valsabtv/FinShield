@@ -18,7 +18,7 @@ import { z } from "zod";
 const singleTransactionSchema = z.object({
   transactionId: z.string().min(1, "Transaction ID is required"),
   accountId: z.string().min(1, "Account ID is required"),
-  amount: z.coerce.number().positive("Amount must be positive"),
+  amount: z.string().min(1, "Amount is required"),
   currency: z.string().length(3, "Currency must be 3 characters"),
   transactionType: z.enum(["DEPOSIT", "WITHDRAWAL", "TRANSFER", "PAYMENT"]),
   merchantName: z.string().optional(),
@@ -59,7 +59,7 @@ export default function Upload() {
     defaultValues: {
       transactionId: "",
       accountId: "",
-      amount: 0,
+      amount: "",
       currency: "USD",
       transactionType: "PAYMENT",
       merchantName: "",

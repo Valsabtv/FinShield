@@ -121,9 +121,19 @@ export const csvTransactionSchema = z.object({
   timestamp: z.string().transform((str) => new Date(str).toISOString()),
 });
 
-// Schema for single transaction input
-export const singleTransactionSchema = insertTransactionSchema.extend({
-  timestamp: z.string().transform((str) => new Date(str).toISOString()),
+// Schema for single transaction input - simplified for frontend form
+export const singleTransactionSchema = z.object({
+  transactionId: z.string().min(1, "Transaction ID is required"),
+  accountId: z.string().min(1, "Account ID is required"),
+  amount: z.string().min(1, "Amount is required"),
+  currency: z.string().length(3, "Currency must be 3 characters"),
+  transactionType: z.enum(["DEPOSIT", "WITHDRAWAL", "TRANSFER", "PAYMENT"]),
+  merchantName: z.string().optional(),
+  merchantCategory: z.string().optional(),
+  location: z.string().optional(),
+  deviceId: z.string().optional(),
+  ipAddress: z.string().optional(),
+  timestamp: z.string().min(1, "Timestamp is required"),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
