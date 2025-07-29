@@ -1,5 +1,7 @@
-import { type User, type InsertUser, type Transaction, type InsertTransaction, type Alert, type InsertAlert, type SystemMetrics, type InsertSystemMetrics } from "@shared/schema";
+import { type User, type InsertUser, type Transaction, type InsertTransaction, type Alert, type InsertAlert, type SystemMetrics, type InsertSystemMetrics, users, transactions, alerts, systemMetrics } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -262,4 +264,193 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  
+  // User methods
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  // Transaction methods
+  async getTransaction(id: string): Promise<Transaction | undefined> {
+    const [transaction] = await db.select().from(transactions).where(eq(transactions.id, id));
+    return transaction || undefined;
+  }
+
+  async getTransactionByTransactionId(transactionId: string): Promise<Transaction | undefined> {
+    const [transaction] = await db.select().from(transactions).where(eq(transactions.transactionId, transactionId));
+    return transaction || undefined;
+  }
+
+  async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {
+    const [transaction] = await db
+      .insert(transactions)
+      .values(insertTransaction)
+      .returning();
+    return transaction;
+  }
+
+  async createTransactionsBulk(insertTransactions: InsertTransaction[]): Promise<Transaction[]> {
+    const createdTransactions = await db
+      .insert(transactions)
+      .values(insertTransactions)
+      .returning();
+    return createdTransactions;
+  }
+
+  async updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | undefined> {
+    const [transaction] = await db
+      .update(transactions)
+      .set({ ...updates, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .where(eq(transactions.id, id))
+      .returning();
+    return transaction || undefined;
+  }
+
+  async getTransactions(limit = 50, offset = 0): Promise<Transaction[]> {
+    return await db
+      .select()
+      .from(transactions)
+      .orderBy(desc(transactions.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getTransactionsByAccountId(accountId: string): Promise<Transaction[]> {
+    return await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.accountId, accountId))
+      .orderBy(desc(transactions.createdAt));
+  }
+
+  async getTransactionsByRiskLevel(riskLevel: string): Promise<Transaction[]> {
+    return await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.riskLevel, riskLevel))
+      .orderBy(desc(transactions.createdAt));
+  }
+
+  async getFlaggedTransactions(): Promise<Transaction[]> {
+    return await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.alertGenerated, true))
+      .orderBy(desc(transactions.createdAt));
+  }
+
+  // Alert methods
+  async getAlert(id: string): Promise<Alert | undefined> {
+    const [alert] = await db.select().from(alerts).where(eq(alerts.id, id));
+    return alert || undefined;
+  }
+
+  async createAlert(insertAlert: InsertAlert): Promise<Alert> {
+    const [alert] = await db
+      .insert(alerts)
+      .values(insertAlert)
+      .returning();
+    return alert;
+  }
+
+  async updateAlert(id: string, updates: Partial<Alert>): Promise<Alert | undefined> {
+    const updateData = { ...updates };
+    if (updates.status === "RESOLVED" && !updates.resolvedAt) {
+      updateData.resolvedAt = sql`CURRENT_TIMESTAMP`;
+    }
+
+    const [alert] = await db
+      .update(alerts)
+      .set(updateData)
+      .where(eq(alerts.id, id))
+      .returning();
+    return alert || undefined;
+  }
+
+  async getAlerts(limit = 50, offset = 0): Promise<Alert[]> {
+    return await db
+      .select()
+      .from(alerts)
+      .orderBy(desc(alerts.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getAlertsByPriority(priority: string): Promise<Alert[]> {
+    return await db
+      .select()
+      .from(alerts)
+      .where(eq(alerts.priority, priority))
+      .orderBy(desc(alerts.createdAt));
+  }
+
+  async getActiveAlerts(): Promise<Alert[]> {
+    return await db
+      .select()
+      .from(alerts)
+      .where(eq(alerts.status, "ACTIVE"))
+      .orderBy(desc(alerts.createdAt));
+  }
+
+  // System metrics methods
+  async createSystemMetric(insertSystemMetric: InsertSystemMetrics): Promise<SystemMetrics> {
+    const [systemMetric] = await db
+      .insert(systemMetrics)
+      .values(insertSystemMetric)
+      .returning();
+    return systemMetric;
+  }
+
+  async getSystemMetrics(metricName?: string, limit = 100): Promise<SystemMetrics[]> {
+    let query = db.select().from(systemMetrics);
+
+    if (metricName) {
+      query = query.where(eq(systemMetrics.metricName, metricName));
+    }
+
+    return await query
+      .orderBy(desc(systemMetrics.timestamp))
+      .limit(limit);
+  }
+
+  async getLatestSystemMetrics(): Promise<SystemMetrics[]> {
+    // Get distinct metric names first
+    const distinctMetrics = await db
+      .selectDistinct({ metricName: systemMetrics.metricName })
+      .from(systemMetrics);
+
+    const latestMetrics: SystemMetrics[] = [];
+
+    for (const metric of distinctMetrics) {
+      const [latestMetric] = await db
+        .select()
+        .from(systemMetrics)
+        .where(eq(systemMetrics.metricName, metric.metricName))
+        .orderBy(desc(systemMetrics.timestamp))
+        .limit(1);
+
+      if (latestMetric) {
+        latestMetrics.push(latestMetric);
+      }
+    }
+
+    return latestMetrics;
+  }
+}
+
+export const storage = new DatabaseStorage();

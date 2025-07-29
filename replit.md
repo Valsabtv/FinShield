@@ -28,10 +28,12 @@ The application follows a full-stack TypeScript architecture with a clear separa
 - **Session Management**: PostgreSQL-based session storage with connect-pg-simple
 
 ### Data Storage Architecture
-- **Primary Database**: PostgreSQL via Neon Database serverless platform
+- **Primary Database**: PostgreSQL via Neon Database serverless platform (ACTIVE)
 - **ORM**: Drizzle ORM with Zod validation schemas
 - **Migration Strategy**: Drizzle Kit for database schema migrations
-- **Fallback Storage**: In-memory storage implementation for development/testing
+- **Storage Implementation**: DatabaseStorage class with full CRUD operations for transactions, alerts, users, and system metrics
+- **Database Tables**: users, transactions, alerts, system_metrics with proper foreign key relationships
+- **Seeding**: Automatic seeding of initial system metrics on server startup
 
 ## Key Components
 
