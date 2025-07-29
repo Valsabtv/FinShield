@@ -1,4 +1,4 @@
-#🚨 FinShield — Financial Fraud Detection System
+🚨 FinShield — Financial Fraud Detection System
 Project Submission for the Code Red Hackathon
 Team Name: 404 Founders
 Team Members:
@@ -11,7 +11,7 @@ Biswayan (25BLC1034)
 
 Bhoopesh (25BLC1235)
 
-###🔒 What is FinShield?
+🔒 What is FinShield?
 FinShield is a cutting-edge fraud detection platform designed to tackle one of the most complex issues in financial crime: Layering of Bank Accounts — a critical stage in money laundering. Built for banks and government agencies, FinShield provides deep, intelligent insight into suspicious transaction patterns, helping maintain the integrity of the financial ecosystem.
 
 🧠 Core Features
