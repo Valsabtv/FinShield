@@ -1,86 +1,34 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import AlertCard from "@/components/alerts/alert-card";
-import { AlertTriangle, CheckCircle, Clock, Filter } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle, Clock, CheckCircle } from "lucide-react";
 
 export default function Alerts() {
-  const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
   const { data: alerts, isLoading } = useQuery({
     queryKey: ["/api/alerts"],
-    refetchInterval: 5000, // Refetch every 5 seconds
+    refetchInterval: 5000,
   });
 
-  const updateAlertMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: any }) => {
-      const response = await apiRequest("PATCH", `/api/alerts/${id}`, updates);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/alerts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: "Alert Updated",
-        description: "Alert status has been updated successfully.",
-      });
-    },
-  });
-
-  const filteredAlerts = (alerts || []).filter((alert: any) => {
-    const matchesPriority = priorityFilter === "ALL" || alert.priority === priorityFilter;
-    const matchesStatus = statusFilter === "ALL" || alert.status === statusFilter;
-    return matchesPriority && matchesStatus;
-  }) || [];
-
-  const alertCounts = {
-    total: (alerts || []).length,
-    active: (alerts || []).filter((a: any) => a.status === "ACTIVE").length,
-    resolved: (alerts || []).filter((a: any) => a.status === "RESOLVED").length,
-    high: (alerts || []).filter((a: any) => a.priority === "HIGH").length,
-    medium: (alerts || []).filter((a: any) => a.priority === "MEDIUM").length,
-    low: (alerts || []).filter((a: any) => a.priority === "LOW").length,
-  };
-
-  const handleResolveAlert = (alertId: string) => {
-    updateAlertMutation.mutate({
-      id: alertId,
-      updates: { status: "RESOLVED" }
-    });
-  };
-
-  const handleDismissAlert = (alertId: string) => {
-    updateAlertMutation.mutate({
-      id: alertId,
-      updates: { status: "DISMISSED" }
-    });
-  };
+  const activeAlerts = (alerts || []).filter((alert: any) => alert.status === "ACTIVE");
+  const resolvedAlerts = (alerts || []).filter((alert: any) => alert.status === "RESOLVED");
 
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Alert Queue</h1>
+        <h1 className="text-3xl font-bold">Security Alerts</h1>
         <p className="text-muted-foreground">
-          Manage and review fraud detection alerts
+          Review and manage fraud detection alerts
         </p>
       </div>
 
       {/* Alert Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold">{alertCounts.active}</div>
-                <div className="text-sm text-muted-foreground">Active Alerts</div>
+                <p className="text-sm text-muted-foreground">Active Alerts</p>
+                <p className="text-2xl font-bold text-red-600">{activeAlerts.length}</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-red-600" />
             </div>
@@ -88,158 +36,155 @@ export default function Alerts() {
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-red-600">{alertCounts.high}</div>
-                <div className="text-sm text-muted-foreground">High Priority</div>
-              </div>
-              <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold text-orange-600">{alertCounts.medium}</div>
-                <div className="text-sm text-muted-foreground">Medium Priority</div>
-              </div>
-              <div className="w-3 h-3 bg-orange-600 rounded-full"></div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold text-green-600">{alertCounts.resolved}</div>
-                <div className="text-sm text-muted-foreground">Resolved</div>
+                <p className="text-sm text-muted-foreground">Resolved Today</p>
+                <p className="text-2xl font-bold text-green-600">{resolvedAlerts.length}</p>
               </div>
               <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Alerts</p>
+                <p className="text-2xl font-bold">{(alerts || []).length}</p>
+              </div>
+              <Clock className="w-8 h-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Filters */}
+      {/* Active Alerts */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Filter Alerts
+          <CardTitle className="flex items-center space-x-2">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <span>Active Alerts ({activeAlerts.length})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Priorities</SelectItem>
-                <SelectItem value="HIGH">High Priority</SelectItem>
-                <SelectItem value="MEDIUM">Medium Priority</SelectItem>
-                <SelectItem value="LOW">Low Priority</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="ACTIVE">Active</SelectItem>
-                <SelectItem value="RESOLVED">Resolved</SelectItem>
-                <SelectItem value="DISMISSED">Dismissed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="flex gap-2 mt-4">
-            <Badge variant="secondary">
-              Showing {filteredAlerts.length} of {alertCounts.total} alerts
-            </Badge>
-            {priorityFilter !== "ALL" && (
-              <Badge variant="outline">Priority: {priorityFilter}</Badge>
-            )}
-            {statusFilter !== "ALL" && (
-              <Badge variant="outline">Status: {statusFilter}</Badge>
-            )}
-          </div>
+          {isLoading ? (
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-24 bg-gray-100 rounded animate-pulse"></div>
+              ))}
+            </div>
+          ) : activeAlerts.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <CheckCircle className="w-12 h-12 mx-auto mb-4 text-green-500" />
+              <p>No active alerts - all clear!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {activeAlerts.map((alert: any) => (
+                <div key={alert.id} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <Badge 
+                          variant={
+                            alert.priority === "HIGH" ? "destructive" :
+                            alert.priority === "MEDIUM" ? "default" : "secondary"
+                          }
+                        >
+                          {alert.priority} PRIORITY
+                        </Badge>
+                        <Badge variant="outline">
+                          {alert.alertType}
+                        </Badge>
+                      </div>
+                      <h3 className="font-medium">{alert.description}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Transaction ID: {alert.transactionId}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Created: {new Date(alert.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      {alert.details?.mlScore && (
+                        <p className="text-sm font-medium">
+                          Risk Score: {(parseFloat(alert.details.mlScore) * 100).toFixed(1)}%
+                        </p>
+                      )}
+                      {alert.details?.riskLevel && (
+                        <Badge 
+                          variant={
+                            alert.details.riskLevel === "HIGH" ? "destructive" :
+                            alert.details.riskLevel === "MEDIUM" ? "default" : "secondary"
+                          }
+                          className="mt-1"
+                        >
+                          {alert.details.riskLevel} RISK
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Alert Details */}
+                  {alert.details?.flags && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-sm font-medium mb-2">Detected Issues:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {alert.details.flags.highValue && (
+                          <Badge variant="outline">High Value Transaction</Badge>
+                        )}
+                        {alert.details.flags.structuring && (
+                          <Badge variant="outline">Structuring Pattern</Badge>
+                        )}
+                        {alert.details.flags.geoVelocity && (
+                          <Badge variant="outline">Geo-Velocity Violation</Badge>
+                        )}
+                        {alert.details.flags.ipMismatch && (
+                          <Badge variant="outline">IP Mismatch</Badge>
+                        )}
+                        {alert.details.flags.multipleFailures && (
+                          <Badge variant="outline">Multiple Failures</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Alert List */}
-      <div className="space-y-4">
-        {isLoading ? (
-          <Card>
-            <CardContent className="p-8">
-              <div className="flex items-center justify-center">
-                <Clock className="w-6 h-6 animate-spin mr-2" />
-                <span className="text-muted-foreground">Loading alerts...</span>
-              </div>
-            </CardContent>
-          </Card>
-        ) : filteredAlerts.length === 0 ? (
-          <Card>
-            <CardContent className="p-8">
-              <div className="text-center text-muted-foreground">
-                <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p>No alerts match the current filters</p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredAlerts.map((alert: any) => (
-            <AlertCard
-              key={alert.id}
-              alert={alert}
-              onResolve={() => handleResolveAlert(alert.id)}
-              onDismiss={() => handleDismissAlert(alert.id)}
-              showActions
-            />
-          ))
-        )}
-      </div>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPriorityFilter("HIGH")}
-            >
-              View High Priority ({alertCounts.high})
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setStatusFilter("ACTIVE")}
-            >
-              View Active Alerts ({alertCounts.active})
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPriorityFilter("ALL");
-                setStatusFilter("ALL");
-              }}
-            >
-              Clear Filters
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Recent Resolved Alerts */}
+      {resolvedAlerts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <span>Recently Resolved ({resolvedAlerts.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {resolvedAlerts.slice(0, 5).map((alert: any) => (
+                <div key={alert.id} className="flex justify-between items-center py-2 border-b last:border-b-0">
+                  <div>
+                    <p className="text-sm font-medium">{alert.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Resolved: {alert.resolvedAt ? new Date(alert.resolvedAt).toLocaleString() : "N/A"}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-green-600">
+                    RESOLVED
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
