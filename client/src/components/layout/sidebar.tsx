@@ -32,55 +32,66 @@ export default function Sidebar() {
   const activeAlertCount = (alerts || []).length;
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
-      <nav className="p-4 space-y-2">
+    <aside className="sticky top-16 h-[calc(100vh-80px)] w-64 overflow-y-auto border-r bg-background p-4">
+      <nav className="space-y-2">
         {navigation.map((item) => {
           const isActive = location === item.href;
           const Icon = item.icon;
           
           return (
-            <Link key={item.name} href={item.href}>
-              <div
-                className={cn(
-                  "flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer",
-                  isActive
-                    ? "bg-primary text-white"
-                    : "text-gray-700 hover:bg-gray-100"
-                )}
-              >
-                <Icon className="w-5 h-5" />
-                <span>{item.name}</span>
-                {item.hasAlerts && activeAlertCount > 0 && (
-                  <Badge variant="destructive" className="ml-auto">
-                    {activeAlertCount > 99 ? "99+" : activeAlertCount}
-                  </Badge>
-                )}
-              </div>
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+                isActive ? "bg-primary text-primary-foreground" : "text-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span>{item.name}</span>
+              {item.hasAlerts && activeAlertCount > 0 && (
+                <Badge variant="destructive" className="ml-auto">
+                  {activeAlertCount > 99 ? "99+" : activeAlertCount}
+                </Badge>
+              )}
             </Link>
           );
         })}
         
-        <div className="pt-4 mt-4 border-t border-gray-200">
-          <Link href="/ml-status">
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm font-medium cursor-pointer">
-              <Brain className="w-5 h-5" />
-              <span>ML Model Status</span>
-            </div>
+        <div className="mt-4 border-t pt-4">
+          <Link
+            href="/ml-status"
+            className={cn(
+              "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+              location === "/ml-status" ? "bg-primary text-primary-foreground" : "text-foreground"
+            )}
+          >
+            <Brain className="h-5 w-5" />
+            <span>ML Model Status</span>
           </Link>
-          <Link href="/audit">
-            <div className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm font-medium cursor-pointer">
-              <History className="w-5 h-5" />
-              <span>Audit Trail</span>
-            </div>
+          <Link
+            href="/audit"
+            className={cn(
+              "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+              location === "/audit" ? "bg-primary text-primary-foreground" : "text-foreground"
+            )}
+          >
+            <History className="h-5 w-5" />
+            <span>Audit Trail</span>
           </Link>
-          <Link href="/settings">
-            <a className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm font-medium">
-              <Settings className="w-5 h-5" />
-              <span>Settings</span>
-            </a>
+          <Link
+            href="/settings"
+            className={cn(
+              "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
+              location === "/settings" ? "bg-primary text-primary-foreground" : "text-foreground"
+            )}
+          >
+            <Settings className="h-5 w-5" />
+            <span>Settings</span>
           </Link>
         </div>
       </nav>
     </aside>
   );
 }
+

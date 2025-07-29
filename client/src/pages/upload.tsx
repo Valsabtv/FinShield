@@ -35,7 +35,6 @@ interface UploadResult {
     totalRows: number;
     processed: number;
     errors: number;
-    flagged: number;
   };
   errors: Array<{
     row: number;
@@ -93,7 +92,7 @@ export default function Upload() {
       setUploadResult(data);
       toast({
         title: "CSV Upload Successful",
-        description: `Processed ${data.summary.processed} transactions, ${data.summary.flagged} flagged`,
+        description: `Processed ${data.summary.processed} transactions`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
@@ -127,7 +126,7 @@ export default function Upload() {
     onSuccess: (data) => {
       toast({
         title: "Transaction Created",
-        description: `Transaction ${data.transactionId} processed with ${data.riskLevel} risk level`,
+        description: `Transaction ${data.transactionId} processed.`,
       });
       form.reset();
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -567,12 +566,6 @@ export default function Upload() {
                   {uploadResult.summary.processed}
                 </div>
                 <div className="text-sm text-gray-500">Processed</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">
-                  {uploadResult.summary.flagged}
-                </div>
-                <div className="text-sm text-gray-500">Flagged</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-orange-600">

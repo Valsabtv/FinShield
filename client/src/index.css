@@ -73,33 +73,3 @@
     @apply text-xl lg:text-2xl;
   }
 }
-
-@layer components {
-  .risk-low {
-    @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300;
-  }
-
-  .risk-medium {
-    @apply bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300;
-  }
-
-  .risk-high {
-    @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300;
-  }
-
-  .status-processed {
-    @apply bg-green-100 text-green-800;
-  }
-
-  .status-flagged {
-    @apply bg-red-100 text-red-800;
-  }
-
-  .status-blocked {
-    @apply bg-red-100 text-red-800;
-  }
-
-  .status-challenged {
-    @apply bg-orange-100 text-orange-800;
-  }
-}

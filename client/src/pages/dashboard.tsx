@@ -32,7 +32,7 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Fraud Detection Dashboard</h1>
+        <h1 className="text-3xl font-bold">{import.meta.env.VITE_APP_NAME || "BankGuardian"}</h1>
         <p className="text-muted-foreground mt-2">
           Monitor transactions and detect suspicious activities
         </p>

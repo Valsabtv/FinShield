@@ -17,8 +17,6 @@ export interface IStorage {
   updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | undefined>;
   getTransactions(limit?: number, offset?: number): Promise<Transaction[]>;
   getTransactionsByAccountId(accountId: string): Promise<Transaction[]>;
-  getTransactionsByRiskLevel(riskLevel: string): Promise<Transaction[]>;
-  getFlaggedTransactions(): Promise<Transaction[]>;
   
   // Alert methods
   getAlert(id: string): Promise<Alert | undefined>;
@@ -158,18 +156,6 @@ export class MemStorage implements IStorage {
   async getTransactionsByAccountId(accountId: string): Promise<Transaction[]> {
     return Array.from(this.transactions.values()).filter(
       (transaction) => transaction.accountId === accountId,
-    );
-  }
-
-  async getTransactionsByRiskLevel(riskLevel: string): Promise<Transaction[]> {
-    return Array.from(this.transactions.values()).filter(
-      (transaction) => transaction.riskLevel === riskLevel,
-    );
-  }
-
-  async getFlaggedTransactions(): Promise<Transaction[]> {
-    return Array.from(this.transactions.values()).filter(
-      (transaction) => transaction.status === "FLAGGED" || transaction.alertGenerated === true,
     );
   }
 
@@ -335,22 +321,6 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(transactions)
       .where(eq(transactions.accountId, accountId))
-      .orderBy(desc(transactions.createdAt));
-  }
-
-  async getTransactionsByRiskLevel(riskLevel: string): Promise<Transaction[]> {
-    return await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.riskLevel, riskLevel))
-      .orderBy(desc(transactions.createdAt));
-  }
-
-  async getFlaggedTransactions(): Promise<Transaction[]> {
-    return await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.alertGenerated, true))
       .orderBy(desc(transactions.createdAt));
   }
 

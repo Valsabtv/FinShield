@@ -15,51 +15,12 @@ export const transactions = pgTable("transactions", {
   accountId: text("account_id").notNull(),
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
   timestamp: timestamp("timestamp").notNull(),
-  
-  // Monetary features
-  transactionVelocity: integer("transaction_velocity").default(0),
-  avgTicketSize: decimal("avg_ticket_size", { precision: 15, scale: 2 }),
-  
-  // Temporal features
-  timeOfDay: integer("time_of_day"), // hour of day 0-23
-  interTransactionInterval: integer("inter_transaction_interval"), // minutes
-  dayNightRatio: decimal("day_night_ratio", { precision: 5, scale: 4 }),
-  
-  // Location & Channel features
-  ipAddress: text("ip_address"),
-  ipCountry: text("ip_country"),
-  billingCountry: text("billing_country"),
-  geoVelocity: decimal("geo_velocity", { precision: 10, scale: 2 }), // km/h
+  merchantName: text("merchant_name"),
   merchantCategory: text("merchant_category"),
-  
-  // Device & Session features
-  deviceFingerprint: text("device_fingerprint"),
-  sessionBehavior: jsonb("session_behavior"),
-  failedAttempts: integer("failed_attempts").default(0),
-  
-  // Identity features
-  emailAge: integer("email_age"), // days
-  emailDomain: text("email_domain"),
-  phoneVerified: boolean("phone_verified").default(false),
-  socialProfilePresence: boolean("social_profile_presence").default(false),
-  
-  // ML and Risk Assessment
-  mlScore: decimal("ml_score", { precision: 5, scale: 4 }),
-  riskLevel: text("risk_level").notNull().default("LOW"), // HIGH, MEDIUM, LOW
-  shapExplanation: jsonb("shap_explanation"),
-  
-  // Rule-based flags
-  highValueFlag: boolean("high_value_flag").default(false),
-  structuringFlag: boolean("structuring_flag").default(false),
-  ipMismatchFlag: boolean("ip_mismatch_flag").default(false),
-  geoVelocityFlag: boolean("geo_velocity_flag").default(false),
-  multipleFailuresFlag: boolean("multiple_failures_flag").default(false),
-  
-  // Status and processing
-  status: text("status").notNull().default("PROCESSED"), // PROCESSED, FLAGGED, BLOCKED, CHALLENGED
-  alertGenerated: boolean("alert_generated").default(false),
-  reviewStatus: text("review_status").default("PENDING"), // PENDING, REVIEWED, APPROVED, REJECTED
-  
+  location: text("location"),
+  deviceId: text("device_id"),
+  ipAddress: text("ip_address"),
+  transactionType: text("transaction_type"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`)
 });
@@ -118,14 +79,14 @@ export const csvTransactionSchema = z.object({
   location: z.string().optional(),
   deviceId: z.string().optional(),
   ipAddress: z.string().optional(),
-  timestamp: z.string().transform((str) => new Date(str).toISOString()),
+  timestamp: z.string().transform((str) => new Date(str)),
 });
 
 // Schema for single transaction input - simplified for frontend form
 export const singleTransactionSchema = z.object({
   transactionId: z.string().min(1, "Transaction ID is required"),
   accountId: z.string().min(1, "Account ID is required"),
-  amount: z.string().min(1, "Amount is required"),
+  amount: z.coerce.number().positive("Amount must be a positive number"),
   currency: z.string().length(3, "Currency must be 3 characters"),
   transactionType: z.enum(["DEPOSIT", "WITHDRAWAL", "TRANSFER", "PAYMENT"]),
   merchantName: z.string().optional(),
