@@ -1,8 +1,23 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
+import csv from "csv-parser";
+import { Readable } from "stream";
 import { storage } from "./storage";
-import { insertTransactionSchema, insertAlertSchema } from "@shared/schema";
+import { insertTransactionSchema, insertAlertSchema, csvTransactionSchema, singleTransactionSchema } from "@shared/schema";
 import { z } from "zod";
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'));
+    }
+  }
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -223,6 +238,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(stats);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // CSV Upload route
+  app.post("/api/transactions/upload-csv", upload.single('csvFile'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No CSV file uploaded" });
+      }
+
+      const csvData: any[] = [];
+      const stream = Readable.from(req.file.buffer.toString());
+      
+      const processingPromise = new Promise((resolve, reject) => {
+        stream
+          .pipe(csv())
+          .on('data', (data) => csvData.push(data))
+          .on('end', resolve)
+          .on('error', reject);
+      });
+
+      await processingPromise;
+
+      // Validate and process CSV data
+      const processedTransactions = [];
+      const errors = [];
+
+      for (let i = 0; i < csvData.length; i++) {
+        const row = csvData[i];
+        try {
+          // Validate the CSV row
+          const validatedRow = csvTransactionSchema.parse(row);
+          
+          // Convert to transaction format and apply ML processing
+          const transactionData = {
+            transactionId: validatedRow.transactionId,
+            accountId: validatedRow.accountId,
+            amount: validatedRow.amount.toString(),
+            currency: validatedRow.currency,
+            transactionType: validatedRow.transactionType,
+            merchantName: validatedRow.merchantName || null,
+            merchantCategory: validatedRow.merchantCategory || null,
+            location: validatedRow.location || null,
+            deviceId: validatedRow.deviceId || null,
+            ipAddress: validatedRow.ipAddress || null,
+            timestamp: new Date(validatedRow.timestamp),
+            // Initialize other fields with defaults
+            transactionVelocity: 0,
+            avgTicketSize: null,
+            timeOfDay: new Date(validatedRow.timestamp).getHours(),
+            interTransactionInterval: null,
+            dayNightRatio: null,
+            ipCountry: null,
+            billingCountry: null,
+            geoVelocity: null,
+            deviceFingerprint: null,
+            sessionBehavior: null,
+            failedAttempts: 0,
+            emailAge: null,
+            emailDomain: null,
+            phoneVerified: false,
+            socialProfilePresence: false,
+            mlScore: null,
+            shapExplanation: null,
+            reviewStatus: "PENDING"
+          };
+
+          // Apply rule-based filtering
+          const ruleBasedResult = await applyRuleBasedFiltering(transactionData);
+          
+          // Apply ML scoring
+          const mlResult = await applyMLScoring({ ...transactionData, ...ruleBasedResult });
+          
+          processedTransactions.push({
+            ...transactionData,
+            ...ruleBasedResult,
+            ...mlResult
+          });
+
+        } catch (error) {
+          errors.push({
+            row: i + 1,
+            data: row,
+            error: error instanceof Error ? error.message : "Validation failed"
+          });
+        }
+      }
+
+      // Bulk insert processed transactions
+      if (processedTransactions.length > 0) {
+        const savedTransactions = await storage.createTransactionsBulk(processedTransactions);
+        
+        // Generate alerts for flagged transactions
+        for (const transaction of savedTransactions) {
+          if (transaction.alertGenerated) {
+            await generateAlert(transaction);
+          }
+        }
+      }
+
+      res.json({
+        message: "CSV processing completed",
+        summary: {
+          totalRows: csvData.length,
+          processed: processedTransactions.length,
+          errors: errors.length,
+          flagged: processedTransactions.filter(t => t.alertGenerated).length
+        },
+        errors: errors.length > 0 ? errors.slice(0, 10) : [] // Return first 10 errors
+      });
+
+    } catch (error) {
+      console.error("CSV upload error:", error);
+      res.status(500).json({ 
+        message: "Failed to process CSV file",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Single transaction upload route
+  app.post("/api/transactions/single", async (req, res) => {
+    try {
+      const validatedData = singleTransactionSchema.parse(req.body);
+      
+      // Convert timestamp string to Date object
+      const transactionData = {
+        ...validatedData,
+        timestamp: new Date(validatedData.timestamp),
+        // Initialize fields with defaults
+        transactionVelocity: 0,
+        avgTicketSize: null,
+        timeOfDay: new Date(validatedData.timestamp).getHours(),
+        interTransactionInterval: null,
+        dayNightRatio: null,
+        ipCountry: null,
+        billingCountry: null,
+        geoVelocity: null,
+        deviceFingerprint: null,
+        sessionBehavior: null,
+        failedAttempts: 0,
+        emailAge: null,
+        emailDomain: null,
+        phoneVerified: false,
+        socialProfilePresence: false,
+        mlScore: null,
+        shapExplanation: null,
+        reviewStatus: "PENDING"
+      };
+      
+      // Apply rule-based filtering
+      const ruleBasedResult = await applyRuleBasedFiltering(transactionData);
+      
+      // Apply ML scoring
+      const mlResult = await applyMLScoring({ ...transactionData, ...ruleBasedResult });
+      
+      // Create transaction with all results
+      const transaction = await storage.createTransaction({
+        ...transactionData,
+        ...ruleBasedResult,
+        ...mlResult
+      });
+      
+      // Generate alert if needed
+      if (transaction.alertGenerated) {
+        await generateAlert(transaction);
+      }
+      
+      res.json(transaction);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      } else {
+        res.status(500).json({ message: "Failed to create transaction" });
+      }
     }
   });
 

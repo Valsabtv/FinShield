@@ -2,48 +2,142 @@ import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Upload as UploadIcon, FileText, AlertTriangle, CheckCircle } from "lucide-react";
+import { Upload as UploadIcon, FileText, AlertTriangle, CheckCircle, Loader2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+// Form schema for single transaction upload
+const singleTransactionSchema = z.object({
+  transactionId: z.string().min(1, "Transaction ID is required"),
+  accountId: z.string().min(1, "Account ID is required"),
+  amount: z.coerce.number().positive("Amount must be positive"),
+  currency: z.string().length(3, "Currency must be 3 characters"),
+  transactionType: z.enum(["DEPOSIT", "WITHDRAWAL", "TRANSFER", "PAYMENT"]),
+  merchantName: z.string().optional(),
+  merchantCategory: z.string().optional(),
+  location: z.string().optional(),
+  deviceId: z.string().optional(),
+  ipAddress: z.string().optional(),
+  timestamp: z.string().min(1, "Timestamp is required"),
+});
 
 interface UploadResult {
-  processed: number;
-  alertsGenerated: number;
-  transactions: any[];
+  message: string;
+  summary: {
+    totalRows: number;
+    processed: number;
+    errors: number;
+    flagged: number;
+  };
+  errors: Array<{
+    row: number;
+    data: any;
+    error: string;
+  }>;
 }
 
 export default function Upload() {
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [activeTab, setActiveTab] = useState<'csv' | 'single'>('csv');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const uploadMutation = useMutation({
-    mutationFn: async (transactions: any[]) => {
-      setUploadProgress(10);
-      const response = await apiRequest("POST", "/api/transactions/upload", { transactions });
+  // Form for single transaction upload
+  const form = useForm<z.infer<typeof singleTransactionSchema>>({
+    resolver: zodResolver(singleTransactionSchema),
+    defaultValues: {
+      transactionId: "",
+      accountId: "",
+      amount: 0,
+      currency: "USD",
+      transactionType: "PAYMENT",
+      merchantName: "",
+      merchantCategory: "",
+      location: "",
+      deviceId: "",
+      ipAddress: "",
+      timestamp: new Date().toISOString().slice(0, 16),
+    },
+  });
+
+  // CSV Upload mutation
+  const csvUploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('csvFile', file);
+      
+      const response = await fetch('/api/transactions/upload-csv', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+      
       return response.json();
     },
     onSuccess: (data: UploadResult) => {
       setUploadProgress(100);
+      setUploadResult(data);
       toast({
-        title: "Upload Successful",
-        description: `Processed ${data.processed} transactions, generated ${data.alertsGenerated} alerts`,
+        title: "CSV Upload Successful",
+        description: `Processed ${data.summary.processed} transactions, ${data.summary.flagged} flagged`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/alerts"] });
-      setFile(null);
-      setUploadProgress(0);
     },
     onError: (error) => {
       setUploadProgress(0);
       toast({
         title: "Upload Failed",
-        description: "Failed to process transactions. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to process CSV file",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Single transaction mutation
+  const singleTransactionMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof singleTransactionSchema>) => {
+      const response = await fetch('/api/transactions/single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create transaction');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Transaction Created",
+        description: `Transaction ${data.transactionId} processed with ${data.riskLevel} risk level`,
+      });
+      form.reset();
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/alerts"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Create Transaction",
+        description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive",
       });
     },
@@ -65,252 +159,446 @@ export default function Upload() {
     setDragActive(false);
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0]);
+      const droppedFile = e.dataTransfer.files[0];
+      if (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv')) {
+        setFile(droppedFile);
+      } else {
+        toast({
+          title: "Invalid File Type",
+          description: "Please upload a CSV file only",
+          variant: "destructive",
+        });
+      }
     }
-  }, []);
+  }, [toast]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
-
-  const parseCSV = (text: string) => {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length < 2) throw new Error('Invalid CSV format');
-    
-    const headers = lines[0].split(',').map(h => h.trim());
-    const transactions = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      if (values.length !== headers.length) continue;
-      
-      const transaction: any = {};
-      headers.forEach((header, index) => {
-        transaction[header] = values[index];
-      });
-      
-      // Convert to expected format
-      const formattedTransaction = {
-        transactionId: transaction.transaction_id || `TXN-${Date.now()}-${i}`,
-        accountId: transaction.account_id || transaction.accountId || 'unknown',
-        amount: parseFloat(transaction.amount) || 0,
-        timestamp: transaction.timestamp || new Date().toISOString(),
-        ipAddress: transaction.ip_address || transaction.ipAddress,
-        ipCountry: transaction.ip_country || transaction.ipCountry,
-        billingCountry: transaction.billing_country || transaction.billingCountry,
-        merchantCategory: transaction.merchant_category || transaction.merchantCategory,
-        deviceFingerprint: transaction.device_fingerprint || transaction.deviceFingerprint,
-        failedAttempts: parseInt(transaction.failed_attempts) || 0,
-        emailAge: parseInt(transaction.email_age) || 0,
-        emailDomain: transaction.email_domain || transaction.emailDomain,
-        phoneVerified: transaction.phone_verified === 'true' || false,
-        socialProfilePresence: transaction.social_profile_presence === 'true' || false,
-        transactionVelocity: parseInt(transaction.transaction_velocity) || 0,
-        geoVelocity: parseFloat(transaction.geo_velocity) || 0,
-        timeOfDay: new Date(transaction.timestamp || Date.now()).getHours(),
-      };
-      
-      transactions.push(formattedTransaction);
-    }
-    
-    return transactions;
-  };
-
-  const handleUpload = async () => {
-    if (!file) return;
-    
-    try {
-      setUploadProgress(5);
-      const text = await file.text();
-      
-      let transactions: any[] = [];
-      
-      if (file.name.endsWith('.csv')) {
-        transactions = parseCSV(text);
-      } else if (file.name.endsWith('.json')) {
-        const data = JSON.parse(text);
-        transactions = Array.isArray(data) ? data : [data];
+      const selectedFile = e.target.files[0];
+      if (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv')) {
+        setFile(selectedFile);
       } else {
-        throw new Error('Unsupported file format');
+        toast({
+          title: "Invalid File Type",
+          description: "Please upload a CSV file only",
+          variant: "destructive",
+        });
       }
-      
-      setUploadProgress(50);
-      uploadMutation.mutate(transactions);
-    } catch (error) {
-      toast({
-        title: "File Processing Error",
-        description: "Failed to parse file. Please check the format.",
-        variant: "destructive",
-      });
-      setUploadProgress(0);
     }
+  };
+
+  const handleUpload = () => {
+    if (file) {
+      setUploadProgress(10);
+      csvUploadMutation.mutate(file);
+    }
+  };
+
+  const onSubmitSingle = (data: z.infer<typeof singleTransactionSchema>) => {
+    singleTransactionMutation.mutate(data);
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Transaction Upload</h1>
-        <p className="text-muted-foreground">
-          Upload transaction data for fraud detection analysis
-        </p>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Transaction Upload</h1>
+          <p className="text-muted-foreground mt-2">
+            Upload transaction data for fraud detection analysis
+          </p>
+        </div>
+        <div className="flex space-x-2">
+          <Button
+            variant={activeTab === 'csv' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('csv')}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            CSV Upload
+          </Button>
+          <Button
+            variant={activeTab === 'single' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('single')}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Single Transaction
+          </Button>
+        </div>
       </div>
 
-      {/* Upload Area */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Upload Transaction Data</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              dragActive
-                ? "border-primary bg-primary/5"
-                : "border-gray-300 hover:border-primary"
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
-            <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-lg mb-2">
-              {file ? file.name : "Drop files here or click to browse"}
-            </p>
-            <p className="text-sm text-muted-foreground mb-4">
-              Supports CSV, JSON formats (Max 10MB)
-            </p>
-            <input
-              type="file"
-              accept=".csv,.json"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="file-upload"
-            />
-            <label htmlFor="file-upload">
-              <Button variant="outline" asChild>
-                <span>Browse Files</span>
-              </Button>
-            </label>
-          </div>
-
-          {file && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <p className="font-medium">{file.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="secondary">Ready</Badge>
+      {activeTab === 'csv' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* CSV Upload Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>CSV File Upload</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                  dragActive
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-300 hover:border-gray-400"
+                }`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+              >
+                <UploadIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-900 mb-2">
+                  {file ? file.name : "Drop your CSV file here"}
+                </p>
+                <p className="text-sm text-gray-500 mb-4">
+                  or click to browse files
+                </p>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <Label
+                  htmlFor="file-upload"
+                  className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Choose File
+                </Label>
               </div>
 
-              {uploadProgress > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Processing...</span>
-                    <span>{uploadProgress}%</span>
+              {file && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <FileText className="w-5 h-5 text-blue-500" />
+                      <div>
+                        <p className="font-medium">{file.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFile(null)}
+                    >
+                      Remove
+                    </Button>
                   </div>
-                  <Progress value={uploadProgress} className="h-2" />
+
+                  {uploadProgress > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Processing...</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <Progress value={uploadProgress} />
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleUpload}
+                    disabled={csvUploadMutation.isPending}
+                    className="w-full"
+                  >
+                    {csvUploadMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <UploadIcon className="w-4 h-4 mr-2" />
+                        Upload CSV
+                      </>
+                    )}
+                  </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
 
-              <Button
-                onClick={handleUpload}
-                disabled={uploadMutation.isPending}
-                className="w-full"
-              >
-                {uploadMutation.isPending ? "Processing..." : "Upload & Analyze"}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Upload Guidelines */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Data Format Requirements</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-semibold mb-2">Required Fields</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• transaction_id</li>
-                <li>• account_id</li>
-                <li>• amount</li>
-                <li>• timestamp</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2">Optional Fields</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• ip_address, ip_country</li>
-                <li>• billing_country</li>
-                <li>• merchant_category</li>
-                <li>• device_fingerprint</li>
-                <li>• failed_attempts</li>
-                <li>• email_age, email_domain</li>
-                <li>• phone_verified</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t pt-4">
-            <h4 className="font-semibold mb-2">Processing Information</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <span>Rule-based filtering applied</span>
+          {/* CSV Format Requirements */}
+          <Card>
+            <CardHeader>
+              <CardTitle>CSV Format Requirements</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Your CSV file should include the following columns:
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="font-medium text-green-600">Required:</div>
+                  <div></div>
+                  <div>transactionId</div>
+                  <div>accountId</div>
+                  <div>amount</div>
+                  <div>currency</div>
+                  <div>transactionType</div>
+                  <div>timestamp</div>
+                  
+                  <div className="font-medium text-blue-600 mt-2">Optional:</div>
+                  <div></div>
+                  <div>merchantName</div>
+                  <div>merchantCategory</div>
+                  <div>location</div>
+                  <div>deviceId</div>
+                  <div>ipAddress</div>
+                </div>
+                
+                <div className="bg-yellow-50 p-3 rounded-md">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Transaction Types:</strong> DEPOSIT, WITHDRAWAL, TRANSFER, PAYMENT
+                  </p>
+                  <p className="text-sm text-yellow-800 mt-1">
+                    <strong>Timestamp Format:</strong> ISO 8601 (YYYY-MM-DDTHH:mm:ss)
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <span>ML scoring with SHAP explanations</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 text-orange-600" />
-                <span>Automatic alert generation</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* ML Model Information */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>ML Model Integration</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              This system integrates with the Money Laundering Detection model for advanced fraud scoring.
-            </p>
-            <div className="flex items-center space-x-4 text-sm">
-              <Badge className="bg-green-100 text-green-800">Model Status: Active</Badge>
-              <span className="text-muted-foreground">Last Updated: 2 hours ago</span>
-              <span className="text-muted-foreground">Version: v2.1.3</span>
+      {activeTab === 'single' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add Single Transaction</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmitSingle)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="transactionId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Transaction ID</FormLabel>
+                        <FormControl>
+                          <Input placeholder="TXN-12345" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="accountId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Account ID</FormLabel>
+                        <FormControl>
+                          <Input placeholder="ACC-67890" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amount</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" placeholder="1000.00" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Currency</FormLabel>
+                        <FormControl>
+                          <Input placeholder="USD" maxLength={3} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="transactionType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Transaction Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="DEPOSIT">Deposit</SelectItem>
+                            <SelectItem value="WITHDRAWAL">Withdrawal</SelectItem>
+                            <SelectItem value="TRANSFER">Transfer</SelectItem>
+                            <SelectItem value="PAYMENT">Payment</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="timestamp"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Timestamp</FormLabel>
+                        <FormControl>
+                          <Input type="datetime-local" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="merchantName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Merchant Name (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Amazon" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="merchantCategory"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Merchant Category (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Retail" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="New York, NY" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="ipAddress"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>IP Address (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="192.168.1.1" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  disabled={singleTransactionMutation.isPending}
+                  className="w-full"
+                >
+                  {singleTransactionMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Transaction
+                    </>
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Upload Results */}
+      {uploadResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span>Upload Results</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">
+                  {uploadResult.summary.totalRows}
+                </div>
+                <div className="text-sm text-gray-500">Total Rows</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">
+                  {uploadResult.summary.processed}
+                </div>
+                <div className="text-sm text-gray-500">Processed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">
+                  {uploadResult.summary.flagged}
+                </div>
+                <div className="text-sm text-gray-500">Flagged</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">
+                  {uploadResult.summary.errors}
+                </div>
+                <div className="text-sm text-gray-500">Errors</div>
+              </div>
             </div>
-            <div className="text-sm">
-              <strong>GitHub Repository:</strong>{" "}
-              <a
-                href="https://github.com/mvram123/Money_Laundering_Detection"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                mvram123/Money_Laundering_Detection
-              </a>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+            {uploadResult.errors.length > 0 && (
+              <div className="mt-4">
+                <h4 className="font-medium text-red-600 mb-2">
+                  Processing Errors (showing first 10):
+                </h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {uploadResult.errors.map((error, index) => (
+                    <div key={index} className="p-2 bg-red-50 rounded text-sm">
+                      <span className="font-medium">Row {error.row}:</span> {error.error}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ export interface IStorage {
   getTransaction(id: string): Promise<Transaction | undefined>;
   getTransactionByTransactionId(transactionId: string): Promise<Transaction | undefined>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  createTransactionsBulk(transactions: InsertTransaction[]): Promise<Transaction[]>;
   updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | undefined>;
   getTransactions(limit?: number, offset?: number): Promise<Transaction[]>;
   getTransactionsByAccountId(accountId: string): Promise<Transaction[]>;
@@ -112,6 +113,25 @@ export class MemStorage implements IStorage {
     };
     this.transactions.set(id, transaction);
     return transaction;
+  }
+
+  async createTransactionsBulk(insertTransactions: InsertTransaction[]): Promise<Transaction[]> {
+    const transactions: Transaction[] = [];
+    const now = new Date();
+    
+    for (const insertTransaction of insertTransactions) {
+      const id = randomUUID();
+      const transaction: Transaction = { 
+        ...insertTransaction, 
+        id, 
+        createdAt: now, 
+        updatedAt: now 
+      };
+      this.transactions.set(id, transaction);
+      transactions.push(transaction);
+    }
+    
+    return transactions;
   }
 
   async updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | undefined> {

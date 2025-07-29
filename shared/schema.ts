@@ -106,6 +106,26 @@ export const insertSystemMetricsSchema = createInsertSchema(systemMetrics).omit(
   timestamp: true,
 });
 
+// Schema for CSV upload validation
+export const csvTransactionSchema = z.object({
+  transactionId: z.string().min(1),
+  accountId: z.string().min(1),
+  amount: z.coerce.number().positive(),
+  currency: z.string().length(3),
+  transactionType: z.enum(["DEPOSIT", "WITHDRAWAL", "TRANSFER", "PAYMENT"]),
+  merchantName: z.string().optional(),
+  merchantCategory: z.string().optional(),
+  location: z.string().optional(),
+  deviceId: z.string().optional(),
+  ipAddress: z.string().optional(),
+  timestamp: z.string().transform((str) => new Date(str).toISOString()),
+});
+
+// Schema for single transaction input
+export const singleTransactionSchema = insertTransactionSchema.extend({
+  timestamp: z.string().transform((str) => new Date(str).toISOString()),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
@@ -114,3 +134,5 @@ export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type Alert = typeof alerts.$inferSelect;
 export type InsertSystemMetrics = z.infer<typeof insertSystemMetricsSchema>;
 export type SystemMetrics = typeof systemMetrics.$inferSelect;
+export type CsvTransaction = z.infer<typeof csvTransactionSchema>;
+export type SingleTransaction = z.infer<typeof singleTransactionSchema>;
