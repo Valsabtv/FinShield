@@ -1,0 +1,54 @@
+make a website for a hackathon which is based on the topic 'Layering of Bank Accounts: Detect suspicious money laundering patterns in bank transactions', its suppsoed to be used by banks and governement to track multiple bank accoutns and prevent any fradulent activities, a flag is raised when such a activity occurs, the base process is as follows -
+Fraud Transaction Detection Algorithm: Key Parameters and Steps
+Main Takeaway:
+An effective fraud‐detection algorithm combines transaction‐level parameters (amount, frequency, velocity), customer–device parameters (IP reputation, device fingerprinting), and identity parameters (email age, phone verification) with rule‐based filters and machine‐learning scoring to flag suspicious transactions in real time.
+Feature Extraction
+Extract the following five categories of features from each transaction:
+Monetary Features
+Transaction Amount (absolute value)1.
+Transaction Velocity (number of transactions per account in last 1 hr/24 hr)2.
+Average Ticket Size vs. historical average per customer2.
+Temporal Features
+Time of Day (out‐of‐pattern hours).
+Inter‐Transaction Interval (time gap since last transaction on that account)2.
+Day–Night Ratio (fraction of transactions outside business hours).
+Location & Channel Features
+IP Address Reputation (known proxy/VPN, geolocation mismatch with billing address).
+Geo‐Velocity (impossible travel: transactions from distant locations in short span).
+Merchant Category vs. customer’s usual categories.
+Device & Session Features
+Device Fingerprint (browser version, OS, screen resolution, plugins)1.
+Session Behavior (mouse-movement and typing‐pattern anomalies)1.
+Failed Login or Payment Attempts count before success.
+Identity Features
+Email Age & Domain (recently created or disposable addresses) 1.
+Phone Verification Status (verified vs. unverified)1.
+Social Profile Presence (absence of online footprint vs. norm for customer segment).
+Rule‐Based Pre‐Filtering
+Immediately flag transactions that meet any of the following hard rules:
+High‐Value Threshold: amount > $10 000 (“high value”)1.
+Structuring Pattern: ≥ 3 transactions just under $10 000 within 24 hr by same account1.
+IP Mismatch: billing-country ≠ IP-country.
+Geo‐Velocity Violation: two transactions > 500 km apart within 1 hr.
+Multiple Failures: > 5 failed payment attempts in one session.
+Transactions passing any rule enter an alert queue for scoring.
+3. Machine‐Learning Scoring
+Use a pre‐trained supervised model (e.g., Random Forest or Gradient Boosting) trained on labeled fraud / legit transactions with the above features:
+Feature Normalization: scale numeric features (Min–Max or Z-score).
+Model Inference: obtain a probability score P(fraud)P(\text{fraud})P(fraud).
+Thresholding:
+High Risk: P>0.9P>0.9P>0.9 → immediate block & manual review.
+Medium Risk: 0.5<P≤0.90.5<P\le0.90.5<P≤0.9 → challenge user (OTP, CAPTCHA).
+Low Risk: P≤0.5P\le0.5P≤0.5 → allow but log for audit.
+Use SHAP explanations to ensure interpretability and regulatory compliance.
+4. Feedback Loop & Continuous Learning
+Label Feedback: incorporate outcomes (chargebacks, disputes) to retrain model weekly.
+Rule Update: adjust thresholds (amount, velocity) based on observed false positives/negatives.
+Feature Drift Monitoring: track distribution shifts in key features and retrain when drift exceeds a predefined threshold.
+Evaluation Metrics
+Precision & Recall: ensure recall ≥ 85% (catch most fraud) while precision ≥ 75% (minimize false alarms).
+ROC‐AUC: target ≥ 0.95 on holdout set.
+False Positive Rate (FPR): keep FPR < 2%.
+Mean Time to Detect (MTTD): aim for < 5 minutes from transaction to alert.
+make the ui nice and elegant, also imply a ml model
+https://github.com/mvram123/Money_Laundering_Detection. as one of the inputs of the value
